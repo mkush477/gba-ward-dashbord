@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BBMP Ward Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f5f0;color:#222;padding:1rem}
+h1{font-size:20px;font-weight:500;margin-bottom:4px}
+.subtitle{font-size:13px;color:#888;margin-bottom:1.5rem}
+.controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1.5rem}
+select{flex:1;min-width:160px;padding:8px 12px;border:1px solid #ccc;border-radius:8px;font-size:14px;background:#fff}
+.card{background:#fff;border:1px solid #e0e0d8;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem}
+.section-title{font-size:12px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.75rem;margin-top:1.25rem}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:.5rem}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:.5rem}
+.metric{background:#f5f5f0;border-radius:8px;padding:.75rem 1rem}
+.metric-label{font-size:12px;color:#888;margin-bottom:4px}
+.metric-value{font-size:20px;font-weight:500}
+.row{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid #f0f0e8;font-size:14px}
+.row:last-child{border-bottom:none}
+.lbl{color:#888}
+.val{font-weight:500;text-align:right;max-width:60%}
+.ward-name{font-size:18px;font-weight:500;margin-bottom:4px}
+.ward-sub{font-size:13px;color:#888}
+.empty{color:#999;font-size:14px;padding:2rem 0;text-align:center}
+.loading{color:#888;font-size:14px;padding:1rem 0}
+</style>
+</head>
+<body>
+<h1>BBMP Ward Information Dashboard</h1>
+<p class="subtitle">Data sourced live from OpenCity · Greater Bengaluru Authority</p>
+<div class="controls">
+  <select id="corp-sel"><option value="">Loading data...</option></select>
+  <select id="ward-sel" disabled><option value="">— Select ward —</option></select>
+</div>
+<div id="panel"><p class="empty">Loading ward data...</p></div>
+
+<script>
+const CSV_URL = "https://raw.githubusercontent.com/mkush477/gba-ward-dashbord/refs/heads/main/wards_database%20(1).csv";
+
+let allWards = [];
+
+const corpSel = document.getElementById('corp-sel');
+const wardSel = document.getElementById('ward-sel');
+const panel = document.getElementById('panel');
+
+Papa.parse(CSV_URL, {
+  download: true,
+  header: true,
+  skipEmptyLines: true,
+  complete: function(results) {
+    allWards = results.data;
+    initCorps();
+    panel.innerHTML = '<p class="empty">Select a corporation and ward to view information.</p>';
+  },
+  error: function(err) {
+    panel.innerHTML = '<p class="empty">Failed to load data. Please refresh and try again.</p>';
+    console.error(err);
+  }
+});
+
+function initCorps() {
+  const corps = [...new Set(allWards.map(d => d.Corporation))].filter(Boolean).sort();
+  corpSel.innerHTML = '<option value="">— Select corporation —</option>';
+  corps.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c; o.textContent = c + ' BBMP';
+    corpSel.appendChild(o);
+  });
+}
+
+corpSel.addEventListener('change', () => {
+  wardSel.innerHTML = '<option value="">— Select ward —</option>';
+  wardSel.disabled = !corpSel.value;
+  panel.innerHTML = '<p class="empty">Select a ward to view information.</p>';
+  if (!corpSel.value) return;
+  const wards = allWards.filter(d => d.Corporation === corpSel.value)
+    .sort((a, b) => parseInt(a.ward_id) - parseInt(b.ward_id));
+  wards.forEach(w => {
+    const o = document.createElement('option');
+    o.value = w.ward_id + '|' + w.Corporation;
+    o.textContent = w.ward_name;
+    wardSel.appendChild(o);
+  });
+});
+
+wardSel.addEventListener('change', () => {
+  if (!wardSel.value) { panel.innerHTML = '<p class="empty">Select a ward.</p>'; return; }
+  const [wid, corp] = wardSel.value.split('|');
+  const w = allWards.find(d => d.ward_id == wid && d.Corporation === corp);
+  if (!w) return;
+  render(w);
+});
+
+function fmt(n) { return parseInt(n || 0).toLocaleString(); }
+function pct(n, t) { return t ? Math.round(parseInt(n) / parseInt(t) * 100) + '%' : '—'; }
+
+function render(w) {
+  panel.innerHTML = `
+  <div class="card">
+    <p class="ward-name">${w.ward_name}</p>
+    <p class="ward-sub">${w.Corporation} BBMP &nbsp;·&nbsp; ${w.Assembly} &nbsp;·&nbsp; ${w.zone_name || ''} zone</p>
+  </div>
+
+  <p class="section-title">Population</p>
+  <div class="grid-3">
+    <div class="metric"><div class="metric-label">Total</div><div class="metric-value">${fmt(w.TOT_P)}</div></div>
+    <div class="metric"><div class="metric-label">Male</div><div class="metric-value">${fmt(w.TOT_M)}</div></div>
+    <div class="metric"><div class="metric-label">Female</div><div class="metric-value">${fmt(w.TOT_F)}</div></div>
+  </div>
+
+  <p class="section-title">SC / ST Population</p>
+  <div class="grid-2">
+    <div class="metric"><div class="metric-label">SC — ${pct(w.SC_P, w.TOT_P)} of total</div><div class="metric-value">${fmt(w.SC_P)}</div></div>
+    <div class="metric"><div class="metric-label">ST — ${pct(w.ST_P, w.TOT_P)} of total</div><div class="metric-value">${fmt(w.ST_P)}</div></div>
+  </div>
+
+  <p class="section-title">Amenities</p>
+  <div class="grid-3">
+    <div class="metric"><div class="metric-label">Parks</div><div class="metric-value">${w.parks || 0}</div></div>
+    <div class="metric"><div class="metric-label">Toilets</div><div class="metric-value">${w.toilets || 0}</div></div>
+    <div class="metric"><div class="metric-label">Lakes</div><div class="metric-value">${w.lakes || 0}</div></div>
+  </div>
+
+  <p class="section-title">Top Concerns</p>
+  <div class="card">
+    ${[w['Top Concern'], w['2nd Concern'], w['3rd Concern']].filter(Boolean).map((c, i) =>
+      `<div class="row"><span class="lbl">#${i + 1}</span><span class="val">${c}</span></div>`
+    ).join('')}
+  </div>
+
+  <p class="section-title">Ward Details</p>
+  <div class="card">
+    <div class="row"><span class="lbl">Reservation</span><span class="val">${w.Reservation || '—'}</span></div>
+    <div class="row"><span class="lbl">Zone</span><span class="val">${w.zone || ''} — ${w.zone_name || ''}</span></div>
+    <div class="row"><span class="lbl">RO Division</span><span class="val">${w.RO_Division || '—'}</span></div>
+    <div class="row"><span class="lbl">ARO Sub-Division</span><span class="val">${w['ARO_ Sub Division'] || '—'}</span></div>
+    <div class="row"><span class="lbl">Assembly Constituency</span><span class="val">${w.Assembly || '—'}</span></div>
+  </div>`;
+}
+</script>
+</body>
+</html>
